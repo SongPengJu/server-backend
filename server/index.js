@@ -9,6 +9,10 @@ require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 3000;
 
+// 中间件
+app.use(cors());
+app.use(express.json());
+
 // MongoDB连接
 mongoose.connect(process.env.MONGODB_URI, {
     useNewUrlParser: true,
@@ -26,18 +30,6 @@ const Photo = mongoose.model('Photo', {
     date: Date,
     imageUrl: String
 });
-
-// CORS配置
-const corsOptions = {
-    origin: '*',  // 允许所有域名访问
-    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Accept'],
-    credentials: false
-};
-
-// 中间件
-app.use(cors(corsOptions));
-app.use(express.json());
 
 // 确保上传目录存在
 const uploadsDir = path.join(__dirname, 'uploads');
