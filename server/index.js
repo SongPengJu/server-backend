@@ -10,7 +10,12 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // 中间件
-app.use(cors());
+app.use(cors({
+    origin: ['https://songpengju.github.io', 'http://localhost:8000'],
+    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+}));
 app.use(express.json());
 
 // MongoDB连接
