@@ -19,14 +19,20 @@ app.use(cors({
 app.use(express.json());
 
 // MongoDB连接
-mongoose.connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-}).then(() => {
-    console.log('MongoDB连接成功');
-}).catch(err => {
-    console.error('MongoDB连接失败:', err);
-});
+const connectWithRetry = async () => {
+    try {
+        await mongoose.connect(process.env.MONGODB_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true
+        });
+        console.log('MongoDB连接成功');
+    } catch (error) {
+        console.error('MongoDB连接失败，5秒后重试:', error);
+        setTimeout(connectWithRetry, 5000);
+    }
+};
+
+connectWithRetry();
 
 // 照片模型
 const Photo = mongoose.model('Photo', {
@@ -103,13 +109,30 @@ app.post('/api/photos', upload.single('image'), async (req, res) => {
         
         console.log('创建新照片对象:', newPhoto);
         
-        await newPhoto.save();
-        console.log('照片保存成功');
-        
-        res.json(newPhoto);
+        // 添加重试逻辑
+        let retries = 3;
+        while (retries > 0) {
+            try {
+                await newPhoto.save();
+                console.log('照片保存成功');
+                res.json(newPhoto);
+                return;
+            } catch (error) {
+                console.error(`保存照片失败，剩余重试次数: ${retries - 1}`, error);
+                retries--;
+                if (retries === 0) {
+                    throw error;
+                }
+                // 等待一段时间后重试
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
     } catch (error) {
         console.error('上传照片时发生错误:', error);
-        res.status(500).json({ error: 'Failed to upload photo' });
+        res.status(500).json({ 
+            error: 'Failed to upload photo',
+            message: error.message
+        });
     }
 });
 
