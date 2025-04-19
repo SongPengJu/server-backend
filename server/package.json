@@ -1,7 +1,7 @@
 {
   "name": "memory-server",
   "version": "1.0.0",
-  "description": "Memory server for photo gallery",
+  "description": "Memory server for photo gallery and letters",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -16,5 +16,8 @@
   },
   "devDependencies": {
     "nodemon": "^2.0.22"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 } 
