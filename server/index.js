@@ -3,14 +3,33 @@ const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const mongoose = require('mongoose');
 require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3000;
 
+// MongoDB连接
+mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+}).then(() => {
+    console.log('MongoDB连接成功');
+}).catch(err => {
+    console.error('MongoDB连接失败:', err);
+});
+
+// 照片模型
+const Photo = mongoose.model('Photo', {
+    title: String,
+    description: String,
+    date: Date,
+    imageUrl: String
+});
+
 // CORS配置
 const corsOptions = {
-    origin: ['https://your-github-username.github.io', 'http://localhost:3000'],
+    origin: ['https://songpengju.github.io', 'http://localhost:3000'],
     methods: ['GET', 'POST', 'DELETE'],
     allowedHeaders: ['Content-Type'],
     credentials: true
@@ -47,22 +66,6 @@ const upload = multer({
     }
 });
 
-// 数据文件路径
-const DATA_FILE = path.join(__dirname, 'data', 'photos.json');
-
-// 确保数据目录存在
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) {
-    console.log('创建数据目录');
-    fs.mkdirSync(dataDir);
-}
-
-// 确保数据文件存在
-if (!fs.existsSync(DATA_FILE)) {
-    console.log('创建数据文件');
-    fs.writeFileSync(DATA_FILE, JSON.stringify([]));
-}
-
 // 静态文件服务
 app.use('/uploads', express.static(uploadsDir));
 
@@ -71,41 +74,21 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok' });
 });
 
-// 读取照片数据
-function readPhotos() {
-    try {
-        console.log('读取照片数据文件');
-        const data = fs.readFileSync(DATA_FILE, 'utf8');
-        const photos = JSON.parse(data);
-        console.log('成功读取照片数据，数量:', photos.length);
-        return photos;
-    } catch (error) {
-        console.error('读取照片数据时出错:', error);
-        return [];
-    }
-}
-
-// 保存照片数据
-function savePhotos(photos) {
-    try {
-        console.log('保存照片数据，数量:', photos.length);
-        fs.writeFileSync(DATA_FILE, JSON.stringify(photos, null, 2));
-        console.log('照片数据保存成功');
-    } catch (error) {
-        console.error('保存照片数据时出错:', error);
-    }
-}
-
 // 获取所有照片
-app.get('/api/photos', (req, res) => {
-    console.log('收到获取照片列表请求');
-    const photos = readPhotos();
-    console.log('返回照片数量:', photos.length);
-    res.json(photos);
+app.get('/api/photos', async (req, res) => {
+    try {
+        console.log('收到获取照片列表请求');
+        const photos = await Photo.find().sort({ date: -1 });
+        console.log('返回照片数量:', photos.length);
+        res.json(photos);
+    } catch (error) {
+        console.error('获取照片列表失败:', error);
+        res.status(500).json({ error: 'Failed to fetch photos' });
+    }
 });
 
 // 上传新照片
-app.post('/api/photos', upload.single('image'), (req, res) => {
+app.post('/api/photos', upload.single('image'), async (req, res) => {
     try {
         console.log('收到新的照片上传请求');
         console.log('请求体:', req.body);
@@ -114,24 +97,17 @@ app.post('/api/photos', upload.single('image'), (req, res) => {
         const { title, description, date } = req.body;
         const imageUrl = `/uploads/${req.file.filename}`;
         
-        const newPhoto = {
-            _id: Date.now().toString(),
+        const newPhoto = new Photo({
             title,
             description,
-            date,
+            date: new Date(date),
             imageUrl
-        };
+        });
         
         console.log('创建新照片对象:', newPhoto);
         
-        const photos = readPhotos();
-        console.log('当前照片数量:', photos.length);
-        
-        photos.push(newPhoto);
-        savePhotos(photos);
-        
-        console.log('照片上传成功，保存到文件系统');
-        console.log('新的照片数量:', photos.length);
+        await newPhoto.save();
+        console.log('照片保存成功');
         
         res.json(newPhoto);
     } catch (error) {
@@ -141,19 +117,17 @@ app.post('/api/photos', upload.single('image'), (req, res) => {
 });
 
 // 删除照片
-app.delete('/api/photos/:id', (req, res) => {
+app.delete('/api/photos/:id', async (req, res) => {
     try {
         console.log('收到删除照片请求，ID:', req.params.id);
         const id = req.params.id;
-        const photos = readPhotos();
-        const photoIndex = photos.findIndex(p => p._id === id);
         
-        if (photoIndex === -1) {
+        const photo = await Photo.findById(id);
+        if (!photo) {
             console.log('未找到要删除的照片');
             return res.status(404).json({ error: 'Photo not found' });
         }
         
-        const photo = photos[photoIndex];
         const imagePath = path.join(uploadsDir, path.basename(photo.imageUrl));
         
         console.log('准备删除文件:', imagePath);
@@ -166,12 +140,9 @@ app.delete('/api/photos/:id', (req, res) => {
             console.log('文件不存在，跳过删除');
         }
         
-        // 从数组中移除
-        photos.splice(photoIndex, 1);
-        savePhotos(photos);
-        
-        console.log('照片数据已从列表中删除');
-        console.log('剩余照片数量:', photos.length);
+        // 从数据库中删除
+        await Photo.findByIdAndDelete(id);
+        console.log('照片数据已从数据库中删除');
         
         res.json({ message: 'Photo deleted successfully' });
     } catch (error) {
@@ -188,6 +159,5 @@ app.use((err, req, res, next) => {
 
 app.listen(port, () => {
     console.log(`服务器启动在端口 ${port}`);
-    console.log('数据文件路径:', DATA_FILE);
     console.log('上传目录路径:', uploadsDir);
 }); 
