@@ -241,23 +241,48 @@ app.post('/api/letters', async (req, res) => {
 app.put('/api/letters/:id', async (req, res) => {
     try {
         console.log('收到更新信件请求，ID:', req.params.id);
+        console.log('请求体:', req.body);
+        
         const { title, content, signature } = req.body;
+        
+        if (!title || !content) {
+            console.error('缺少必要字段');
+            return res.status(400).json({ 
+                error: 'Bad Request',
+                message: '标题和内容不能为空'
+            });
+        }
         
         const letter = await Letter.findByIdAndUpdate(
             req.params.id,
-            { title, content, signature },
-            { new: true }
+            { 
+                title,
+                content,
+                signature: signature || '永远的朋友',
+                date: new Date() // 更新修改时间
+            },
+            { 
+                new: true,
+                runValidators: true
+            }
         );
         
         if (!letter) {
-            return res.status(404).json({ error: 'Letter not found' });
+            console.error('未找到要更新的信件');
+            return res.status(404).json({ 
+                error: 'Not Found',
+                message: '信件不存在'
+            });
         }
         
-        console.log('信件更新成功');
+        console.log('信件更新成功:', letter);
         res.json(letter);
     } catch (error) {
         console.error('更新信件失败:', error);
-        res.status(500).json({ error: 'Failed to update letter' });
+        res.status(500).json({ 
+            error: 'Internal Server Error',
+            message: error.message
+        });
     }
 });
 
