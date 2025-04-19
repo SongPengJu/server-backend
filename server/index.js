@@ -160,6 +160,20 @@ app.get('/api/letters', async (req, res) => {
         console.log('收到获取信件列表请求');
         const letters = await Letter.find().sort({ date: -1 });
         console.log('返回信件数量:', letters.length);
+        
+        // 如果没有信件，创建一个默认信件
+        if (letters.length === 0) {
+            console.log('没有找到信件，创建默认信件');
+            const defaultLetter = new Letter({
+                title: '欢迎使用',
+                content: '这是一个新的开始...',
+                signature: '永远的朋友'
+            });
+            await defaultLetter.save();
+            letters.push(defaultLetter);
+            console.log('默认信件创建成功');
+        }
+        
         res.json(letters);
     } catch (error) {
         console.error('获取信件列表失败:', error);
@@ -171,6 +185,26 @@ app.get('/api/letters', async (req, res) => {
 app.get('/api/letters/:id', async (req, res) => {
     try {
         console.log('收到获取信件请求，ID:', req.params.id);
+        
+        // 如果是请求默认信件
+        if (req.params.id === 'default') {
+            console.log('请求默认信件');
+            let defaultLetter = await Letter.findOne({ title: '欢迎使用' });
+            
+            if (!defaultLetter) {
+                console.log('创建默认信件');
+                defaultLetter = new Letter({
+                    title: '欢迎使用',
+                    content: '这是一个新的开始...',
+                    signature: '永远的朋友'
+                });
+                await defaultLetter.save();
+                console.log('默认信件创建成功');
+            }
+            
+            return res.json(defaultLetter);
+        }
+        
         const letter = await Letter.findById(req.params.id);
         if (!letter) {
             return res.status(404).json({ error: 'Letter not found' });
