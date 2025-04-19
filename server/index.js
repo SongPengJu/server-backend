@@ -29,10 +29,10 @@ const Photo = mongoose.model('Photo', {
 
 // CORS配置
 const corsOptions = {
-    origin: ['https://songpengju.github.io', 'http://localhost:3000'],
-    methods: ['GET', 'POST', 'DELETE'],
-    allowedHeaders: ['Content-Type'],
-    credentials: true
+    origin: '*',  // 允许所有域名访问
+    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Accept'],
+    credentials: false
 };
 
 // 中间件
