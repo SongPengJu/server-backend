@@ -141,21 +141,53 @@ app.post('/api/photos', upload.single('image'), async (req, res) => {
 // 删除照片
 app.delete('/api/photos/:id', async (req, res) => {
     try {
+        console.log('收到删除照片请求，ID:', req.params.id);
+        
+        // 查找照片记录
         const photo = await Photo.findById(req.params.id);
         if (!photo) {
+            console.log('未找到照片记录');
             return res.status(404).json({ error: '照片不存在' });
         }
 
-        // 从Cloudinary删除图片
-        await cloudinary.uploader.destroy(photo.cloudinaryId);
-        
+        console.log('找到照片记录:', photo);
+
+        // 如果照片有Cloudinary ID，从Cloudinary删除
+        if (photo.cloudinaryId) {
+            try {
+                console.log('正在从Cloudinary删除图片，ID:', photo.cloudinaryId);
+                await cloudinary.uploader.destroy(photo.cloudinaryId);
+                console.log('Cloudinary图片删除成功');
+            } catch (cloudinaryError) {
+                console.error('从Cloudinary删除图片失败:', cloudinaryError);
+                // 继续执行，因为数据库记录仍然需要删除
+            }
+        } else if (photo.imageUrl && photo.imageUrl.startsWith('/uploads/')) {
+            // 处理本地存储的图片
+            try {
+                const localPath = path.join(__dirname, photo.imageUrl);
+                console.log('尝试删除本地文件:', localPath);
+                if (fs.existsSync(localPath)) {
+                    fs.unlinkSync(localPath);
+                    console.log('本地文件删除成功');
+                }
+            } catch (fsError) {
+                console.error('删除本地文件失败:', fsError);
+                // 继续执行，因为数据库记录仍然需要删除
+            }
+        }
+
         // 从数据库删除记录
         await Photo.findByIdAndDelete(req.params.id);
-        
+        console.log('数据库记录删除成功');
+
         res.status(200).json({ message: '照片删除成功' });
     } catch (error) {
-        console.error('删除照片失败:', error);
-        res.status(500).json({ error: '删除照片失败' });
+        console.error('删除照片时发生错误:', error);
+        res.status(500).json({ 
+            error: '删除照片失败',
+            details: error.message 
+        });
     }
 });
 
