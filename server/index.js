@@ -5,6 +5,8 @@ const path = require('path');
 const fs = require('fs');
 const mongoose = require('mongoose');
 require('dotenv').config();
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 const app = express();
 // 使用环境变量PORT，如果没有则使用3000
@@ -49,7 +51,8 @@ const Photo = mongoose.model('Photo', {
     title: String,
     description: String,
     date: Date,
-    imageUrl: String
+    imageUrl: String,
+    cloudinaryId: String
 });
 
 // 信件模型
@@ -67,16 +70,20 @@ if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir);
 }
 
-// 配置文件上传
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        console.log('文件上传目标目录:', uploadsDir);
-        cb(null, uploadsDir);
-    },
-    filename: function (req, file, cb) {
-        const filename = Date.now() + path.extname(file.originalname);
-        console.log('生成的文件名:', filename);
-        cb(null, filename);
+// Cloudinary配置
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+// 配置Cloudinary存储
+const storage = new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: {
+        folder: 'memory-photos',
+        allowed_formats: ['jpg', 'jpeg', 'png', 'gif'],
+        transformation: [{ width: 1000, crop: 'limit' }]
     }
 });
 
@@ -106,51 +113,49 @@ app.get('/api/photos', async (req, res) => {
 // 上传新照片
 app.post('/api/photos', upload.single('image'), async (req, res) => {
     try {
-        console.log('收到新的照片上传请求');
+        console.log('收到照片上传请求');
         console.log('请求体:', req.body);
-        console.log('上传的文件:', req.file);
+        console.log('文件:', req.file);
 
-        const { title, description, date } = req.body;
-        const imageUrl = `/uploads/${req.file.filename}`;
-        
-        const newPhoto = new Photo({
-            title,
-            description,
-            date: new Date(date),
-            imageUrl
+        if (!req.file) {
+            return res.status(400).json({ error: '请上传图片' });
+        }
+
+        const photo = new Photo({
+            title: req.body.title,
+            description: req.body.description,
+            date: req.body.date,
+            imageUrl: req.file.path, // Cloudinary返回的URL
+            cloudinaryId: req.file.filename // Cloudinary的公共ID
         });
-        
-        console.log('创建新照片对象:', newPhoto);
-        
-        await newPhoto.save();
-        console.log('照片保存成功');
-        res.json(newPhoto);
+
+        await photo.save();
+        console.log('照片保存成功:', photo);
+        res.status(201).json(photo);
     } catch (error) {
-        console.error('上传照片时发生错误:', error);
-        res.status(500).json({ error: 'Failed to upload photo' });
+        console.error('保存照片失败:', error);
+        res.status(500).json({ error: '保存照片失败' });
     }
 });
 
 // 删除照片
 app.delete('/api/photos/:id', async (req, res) => {
     try {
-        console.log('收到删除照片请求，ID:', req.params.id);
-        const photo = await Photo.findByIdAndDelete(req.params.id);
-        
+        const photo = await Photo.findById(req.params.id);
         if (!photo) {
-            return res.status(404).json({ error: 'Photo not found' });
+            return res.status(404).json({ error: '照片不存在' });
         }
+
+        // 从Cloudinary删除图片
+        await cloudinary.uploader.destroy(photo.cloudinaryId);
         
-        const imagePath = path.join(uploadsDir, path.basename(photo.imageUrl));
-        if (fs.existsSync(imagePath)) {
-            fs.unlinkSync(imagePath);
-            console.log('文件删除成功');
-        }
+        // 从数据库删除记录
+        await Photo.findByIdAndDelete(req.params.id);
         
-        res.json({ message: 'Photo deleted successfully' });
+        res.status(200).json({ message: '照片删除成功' });
     } catch (error) {
-        console.error('删除照片时发生错误:', error);
-        res.status(500).json({ error: 'Failed to delete photo' });
+        console.error('删除照片失败:', error);
+        res.status(500).json({ error: '删除照片失败' });
     }
 });
 
